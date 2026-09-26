@@ -2,6 +2,8 @@ import {InputError} from '../lib/rules.js';
 import {db,telegram} from '../lib/integrations.js';
 import {submitSale,submitExpense,approveSale,allocateExpense,snapshot,linkTelegram,syncRecord,deliver} from '../lib/service.js';
 
+const saleUsage='To record a sale, send one message in this format:\n/sale S06 | Customer name | A | Description | 1000.00 | 50/30/20\nUse A or B for the project. The last numbers are Richard/Anastasia/Jean-Claude percentages and must total 100.';
+const expenseUsage='To record an expense, send one message in this format:\n/expense E08 | Description | Materials | 120.00 | A\nCategory: Materials, Travel, or Other. Allocation: A, B, or Company overhead.';
 function json(data,status=200){return Response.json(data,{status,headers:{'Cache-Control':'no-store'}});}
 function role(body,request){return body?.role||new URL(request.url).searchParams.get('role');}
 function parseBotSale(parts){
@@ -20,10 +22,11 @@ async function bot(update){
   const message=update?.message;if(!message?.from?.id||!message?.chat?.id)return;
   const chatId=message.chat.id,userId=message.from.id,text=String(message.text||'').trim();
   if(message.chat.type!=='private'){await telegram('sendMessage',{chat_id:chatId,text:'Use this bot in a private chat.'});return;}
-  if(/^\/(start|help)/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:'Friends Included\n/id — show your Telegram IDs for manager linking\n/sale S01 | Customer | A | Description | 1000.00 | 50/30/20\n/expense E01 | Description | Materials | 120.00 | A\nThe manager must link your ID before submissions.'});return;}
+  if(/^\/(start|help)(?:@\w+)?$/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:`Friends Included\n/id — show your Telegram IDs for manager linking\n\n${saleUsage}\n\n${expenseUsage}\n\nThe manager must link your ID before submissions.`});return;}
   if(/^\/id\b/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:`Telegram user ID: ${userId}\nChat ID: ${chatId}`});return;}
-  const match=text.match(/^\/(sale|expense)(?:@\w+)?\s+([\s\S]+)$/i);
+  const match=text.match(/^\/(sale|expense)(?:@\w+)?(?:\s+([\s\S]+))?$/i);
   if(!match){await telegram('sendMessage',{chat_id:chatId,text:'Unknown command. Send /help for formats.'});return;}
+  if(!match[2]?.trim()){await telegram('sendMessage',{chat_id:chatId,text:match[1].toLowerCase()==='sale'?saleUsage:expenseUsage});return;}
   try{
     const links=await db('telegram_links',{query:`telegram_user_id=eq.${userId}&limit=1`}),actor=links[0]?.employee_id;
     if(!actor)throw new InputError('Your Telegram user ID is not linked. Send /id and ask the manager to link it.',403);
