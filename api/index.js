@@ -43,6 +43,14 @@ export async function handle(request){
     if(request.method==='GET'&&path==='/state')return json(await snapshot(role(null,request)));
     if(request.method!=='POST')return json({error:'Not found'},404);
     const body=await request.json(),actor=role(body,request);
+    if(path==='/connect-telegram'){
+      if(actor!=='svetlana')throw new InputError('Only Svetlana may connect the Telegram bot.',403);
+      if(!process.env.TELEGRAM_WEBHOOK_SECRET)throw new Error('TELEGRAM_WEBHOOK_SECRET is not configured');
+      const site=(process.env.PUBLIC_SITE_URL||'https://friends-included.vercel.app').replace(/\/$/,'');
+      if(!/^https:\/\/[a-z0-9.-]+$/i.test(site))throw new Error('PUBLIC_SITE_URL must be an HTTPS origin');
+      await telegram('setWebhook',{url:`${site}/api/telegram`,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message']});
+      return json({ok:true,webhook:`${site}/api/telegram`});
+    }
     if(path==='/sales')return json(await submitSale(body,actor,'web',null,body.test||{}),201);
     if(path==='/expenses')return json(await submitExpense(body,actor,'web',null,body.test||{}),201);
     if(path==='/approve-sale')return json(await approveSale(String(body.reference||'').toUpperCase(),body.split,actor,body.test||{}));
@@ -61,3 +69,4 @@ export async function handle(request){
   }catch(e){return json({error:e.message||'Unexpected error'},e.status||(/not configured/i.test(e.message)?503:500));}
 }
 export default {fetch:handle};
+
