@@ -10,6 +10,7 @@ A Vercel web application and Telegram bot for the fictional Day 4 homework. Supa
 - Dynamic project and company results, commission rounding, pending records, and separate Sheets and Telegram delivery states.
 - Fixed Sheets row numbers per transaction, so approval and retry update the same row.
 - Telegram user ID linking by the manager; bot messages use the saved originating chat for later decisions.
+- Manager decision forms include one-time Sheets and Telegram failure switches for the homework's retry test. The saved decision and financial totals remain in Supabase; retry from the record status badges.
 
 ## Account setup
 
