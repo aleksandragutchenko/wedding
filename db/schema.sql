@@ -44,7 +44,7 @@ create table if not exists sales (
   sheet_sync_status text not null default 'Sync pending' check (sheet_sync_status in ('Synced','Sync pending','Sync failed')),
   sheet_sync_error text,
   constraint proposed_total check (proposed_r + proposed_a + proposed_j = 100),
-  constraint final_consistent check ((status='Pending approval' and final_r is null and final_a is null and final_j is null and decided_at is null) or (status='Approved' and final_r + final_a + final_j = 100 and decided_at is not null))
+  constraint final_consistent check ((status='Pending approval' and final_r is null and final_a is null and final_j is null and decided_at is null) or (status='Approved' and final_r is not null and final_a is not null and final_j is not null and final_r + final_a + final_j = 100 and decided_at is not null))
 );
 
 create table if not exists expenses (
@@ -86,3 +86,7 @@ alter table telegram_links enable row level security;
 alter table sales enable row level security;
 alter table expenses enable row level security;
 alter table delivery_events enable row level security;
+
+grant select on employees to service_role;
+grant select, insert, update on telegram_links, sales, expenses, delivery_events to service_role;
+grant usage, select on sequence sales_sheet_row_seq, expenses_sheet_row_seq, delivery_events_id_seq to service_role;
