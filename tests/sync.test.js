@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync} from 'node:crypto';
-import {syncRecord,submitSale,deliver} from '../lib/service.js';
+import {syncRecord,submitSale,deliver,approveSale} from '../lib/service.js';
 
 test('sheet retry finds existing reference after row movement and updates it once',async()=>{
  const originalFetch=globalThis.fetch;
@@ -61,5 +61,17 @@ test('concurrent Telegram delivery retries claim one send',async()=>{
  };
  try{await Promise.all([deliver(1),deliver(1)]);assert.equal(sends,1);assert.equal(event.status,'Delivered');}
  finally{globalThis.fetch=oldFetch;for(const k of names){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}}
+});
+
+test('stale concurrent approval loses conditional database update',async()=>{
+ const oldFetch=globalThis.fetch,oldUrl=process.env.SUPABASE_URL,oldKey=process.env.SUPABASE_SECRET_KEY;
+ process.env.SUPABASE_URL='https://db.example';process.env.SUPABASE_SECRET_KEY='test';
+ let conditional=false;
+ globalThis.fetch=async(url,options={})=>{
+  if(options.method==='PATCH'){conditional=String(url).includes('status=eq.Pending%20approval');return Response.json([]);}
+  return Response.json([{reference:'S05',status:'Pending approval'}]);
+ };
+ try{await assert.rejects(()=>approveSale('S05',{r:100,a:0,j:0},'svetlana'),{status:409});assert.equal(conditional,true);}
+ finally{globalThis.fetch=oldFetch;if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SECRET_KEY;else process.env.SUPABASE_SECRET_KEY=oldKey;}
 });
 
