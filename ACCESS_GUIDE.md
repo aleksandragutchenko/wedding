@@ -4,11 +4,11 @@
 
 The private staff interface and the isolated public professor test are deployed. Both database migrations have been applied, a CSV backup of the existing financial tables was saved privately, and `SUPABASE_PUBLISHABLE_KEY` is configured in Vercel Production. S01–S05 and E01–E07 remain in the homework ledger. The old manager access code is no longer used by the deployed application.
 
-The five staff Auth accounts and role assignments have **not** been created. Until the owner completes those steps, the private finance desk cannot be used. The public **Test this system** journey works independently. The Google Sheet sharing and existing server credentials have not been changed.
+The five staff Auth accounts and role assignments have **not** been created. Until the owner completes those steps, the private finance desk cannot be used. The public **Test this system** journey works independently. Fictional transactions sync to a separate Test Ledger tab in the existing link-readable workbook. The original Sales and Expenses tabs, workbook sharing, and existing server credentials have not been changed.
 
 Vercel Authentication currently uses **Standard Protection**, which protects deployment URLs while leaving the production domain public. Keep that protection enabled for historical deployments, which contain older application code.
 
-After staff sign-in works, the owner may separately decide whether to restrict Sheet sharing and rotate old service credentials. Those changes are not needed for the professor test.
+After staff sign-in works, the owner may separately decide whether to move the public Test Ledger to another workbook, restrict homework Sheet sharing, and rotate old service credentials. Those changes are not needed for the professor test.
 
 ## Remaining owner setup for private staff access
 
@@ -25,7 +25,7 @@ After staff sign-in works, the owner may separately decide whether to restrict S
 
    Confirm the SQL affected one row. Do not assign any other account to `svetlana`.
 3. Svetlana signs in at the site using her invited email and the one-time code. In Manager → Assign an invited user, assign Richard, Anastasia, Jean-Claude, and Kevin after inviting each separate email in Supabase Authentication → Users. Use one role per account. No password or manager code needs to be sent to anyone.
-4. If the owner wants the raw homework Sheet private, change Google Sheets → Share → General access to **Restricted**, retaining the service account as Editor and granting a manager Viewer separately. This does not affect the isolated public test.
+4. If the owner wants the raw homework Sheet private, first move Test Ledger to a separate public workbook and update the app's test Sheet destination and link. Then change this workbook's Google Sheets → Share → General access to **Restricted**, retaining the service account as Editor and granting a manager Viewer separately. Restricting the current workbook now would prevent professors from opening the Test Ledger.
 5. After staff sign-in, bot, and Sheet sync are verified, rotate the Supabase secret API key, Telegram token, and Google service-account key; update their Vercel Production variables and redeploy. Revoke each predecessor in its provider. Remove these credentials from Vercel Preview scope, and remove `MANAGER_ACCESS_CODE` from all scopes. Reconnect the Telegram webhook after token rotation. The new code has no manager-code endpoint.
 
 ## Each person's sign-in and Telegram setup
