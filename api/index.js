@@ -68,8 +68,8 @@ export async function handle(request){
       await telegram('setWebhook',{url:`${site}/api/telegram`,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message']});
       return json({ok:true,webhook:`${site}/api/telegram`});
     }
-    if(path==='/sales')return json(await submitSale(body,actor,'web',null,body.test||{}),201);
-    if(path==='/expenses')return json(await submitExpense(body,actor,'web',null,body.test||{}),201);
+    if(path==='/sales')return json(await submitSale(body,actor,'web'),201);
+    if(path==='/expenses')return json(await submitExpense(body,actor,'web'),201);
     if(path==='/approve-sale')return json(await approveSale(String(body.reference||'').toUpperCase(),body.split,actor,body.test||{}));
     if(path==='/allocate-expense')return json(await allocateExpense(String(body.reference||'').toUpperCase(),body.allocation,actor,body.test||{}));
     if(path==='/link-telegram')return json(await linkTelegram(body.userId,body.chatId,body.employeeId,actor));
