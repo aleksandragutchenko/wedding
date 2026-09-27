@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash,generateKeyPairSync} from 'node:crypto';
 import {handle} from '../api/index.js';
 
 function mockSandbox(){
   const oldFetch=globalThis.fetch,old={};
-  for(const key of ['SUPABASE_URL','SUPABASE_SECRET_KEY','TELEGRAM_BOT_TOKEN','TELEGRAM_WEBHOOK_SECRET']){old[key]=process.env[key];}
-  Object.assign(process.env,{SUPABASE_URL:'https://db.example',SUPABASE_SECRET_KEY:'secret',TELEGRAM_BOT_TOKEN:'bot-secret',TELEGRAM_WEBHOOK_SECRET:'hook-secret'});
+  for(const key of ['SUPABASE_URL','SUPABASE_SECRET_KEY','TELEGRAM_BOT_TOKEN','TELEGRAM_WEBHOOK_SECRET','GOOGLE_SHEET_ID','GOOGLE_SERVICE_ACCOUNT_EMAIL','GOOGLE_PRIVATE_KEY']){old[key]=process.env[key];}
+  const privateKey=generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({type:'pkcs8',format:'pem'});
+  Object.assign(process.env,{SUPABASE_URL:'https://db.example',SUPABASE_SECRET_KEY:'secret',TELEGRAM_BOT_TOKEN:'bot-secret',TELEGRAM_WEBHOOK_SECRET:'hook-secret',GOOGLE_SHEET_ID:'homework-sheet',GOOGLE_SERVICE_ACCOUNT_EMAIL:'test@example.test',GOOGLE_PRIVATE_KEY:privateKey});
   const tables=Object.fromEntries(['test_sessions','test_link_challenges','test_telegram_links','test_transactions','test_delivery_events'].map(k=>[k,[]]));
-  const sent=[];let failNextTelegram=false,sequence=0;
+  const sent=[],sheetRows=new Map();let failNextTelegram=false,failNextSheet=false,sequence=0,sheetSequence=1;
   const hash=x=>createHash('sha256').update(x).digest('hex');
   const rows=(table,url)=>{
     let result=tables[table];
@@ -28,6 +29,14 @@ function mockSandbox(){
     if(url.host==='api.telegram.org'){
       if(failNextTelegram){failNextTelegram=false;return Response.json({ok:false,description:'temporary outage'},{status:503});}
       sent.push(body);return Response.json({ok:true,result:{message_id:sent.length}});
+    }
+    if(url.host==='oauth2.googleapis.com')return Response.json({access_token:'test-google-token',expires_in:3600});
+    if(url.host==='sheets.googleapis.com'){
+      const range=decodeURIComponent(url.pathname.split('/values/')[1]||'');
+      const row=Number(range.match(/!A(\d+)/)?.[1]);
+      if(method==='GET')return Response.json({values:sheetRows.has(row)?[[sheetRows.get(row)[0]]]:[]});
+      if(failNextSheet){failNextSheet=false;return Response.json({message:'temporary Sheet outage'},{status:503});}
+      sheetRows.set(row,body.values[0]);return Response.json({updatedRange:range});
     }
     if(url.pathname.endsWith('/rpc/claim_test_link_button')){
       const challenge=tables.test_link_challenges.find(x=>x.id===body.p_challenge_id);
@@ -50,7 +59,7 @@ function mockSandbox(){
         }
         const row={...value,id:value.id||`00000000-0000-0000-0000-${String(++sequence).padStart(12,'0')}`,created_at:new Date().toISOString()};
         if(table==='test_sessions')row.expires_at=new Date(Date.now()+7*86400000).toISOString();
-        if(table==='test_transactions'){row.submitted_at=new Date().toISOString();row.reset_at=null;}
+        if(table==='test_transactions'){row.submitted_at=new Date().toISOString();row.reset_at=null;row.sheet_row=++sheetSequence;row.sheet_sync_status='Queued';row.sheet_sync_error=null;}
         if(table==='test_delivery_events'){row.id=sequence;row.attempts=0;row.updated_at=new Date().toISOString();}
         tables[table].push(row);inserted.push(row);
       }
@@ -64,7 +73,7 @@ function mockSandbox(){
   const start=async()=>{const response=await call('test/session',{});assert.equal(response.status,200);return response.headers.get('set-cookie').split(';')[0];};
   const confirm=(challengeId,chatId,fromId=chatId)=>call('telegram',{callback_query:{id:`callback-${sequence++}`,from:{id:fromId},message:{chat:{id:chatId,type:'private'}},data:`testlink:${challengeId}`}},undefined,{'x-telegram-bot-api-secret-token':'hook-secret'});
   const restore=()=>{globalThis.fetch=oldFetch;for(const [key,value] of Object.entries(old)){if(value===undefined)delete process.env[key];else process.env[key]=value;}};
-  return {tables,sent,call,start,confirm,restore,hash,failTelegram(){failNextTelegram=true;}};
+  return {tables,sent,sheetRows,call,start,confirm,restore,hash,failTelegram(){failNextTelegram=true;},failSheet(){failNextSheet=true;}};
 }
 
 test('professor sandbox isolates sessions, verifies chats, keeps owners and supports recovery',async()=>{
@@ -94,6 +103,8 @@ test('professor sandbox isolates sessions, verifies chats, keeps owners and supp
     assert.equal((await m.call('test/sales',{...input,split:{r:50,a:30,j:30}},a)).status,400);
     m.failTelegram();const created=await m.call('test/sales',input,a);assert.equal(created.status,201);
     let record=(await created.json()).record;assert.equal(record.employee_id,'richard');assert.equal(String(record.notification_chat_id),'12345678');
+    assert.equal(m.sheetRows.get(record.sheet_row)[0],record.id);
+    assert.equal(m.sheetRows.get(record.sheet_row)[6],'Pending approval');
     assert.equal((await m.call('test/sales',input,a)).status,409);
     assert.equal((await m.call('test/decide',{reference:'ST1',split:{r:50,a:30,j:20}},b)).status,200);
     assert.equal((await (await m.call('test/state',undefined,a)).json()).records[0].status,'Pending approval');
@@ -108,6 +119,9 @@ test('professor sandbox isolates sessions, verifies chats, keeps owners and supp
     const requested2=await m.call('test/link/request',{employeeId:'kevin',chatId:'12345678'},a);assert.equal(requested2.status,200);
     const challenge2=m.sent.at(-1).reply_markup.inline_keyboard[0][0].callback_data.split(':')[1];assert.equal((await m.confirm(challenge2,12345678)).status,200);
     assert.equal((await m.call('test/decide',{reference:'ST1',split:{r:60,a:20,j:20}},a)).status,200);
+    assert.equal(m.sheetRows.get(record.sheet_row)[6],'Approved');
+    assert.deepEqual(m.sheetRows.get(record.sheet_row).slice(7,13),[50,30,20,60,20,20]);
+    assert.equal(m.sheetRows.size,2);
     assert.equal(String(m.sent.at(-1).chat_id),'12345678');assert.match(m.sent.at(-1).text,/ST1 approved/);
     assert.equal((await m.call('test/decide',{reference:'ST1',split:{r:60,a:20,j:20}},a)).status,409);
     state=await (await m.call('test/state',undefined,a)).json();assert.equal(state.dashboard.income,10000);assert.equal(state.dashboard.commissionExpense,1000);assert.equal(state.dashboard.companyResult,9000);
@@ -115,9 +129,33 @@ test('professor sandbox isolates sessions, verifies chats, keeps owners and supp
     const expenseInput={employeeId:'kevin',reference:'ET1',description:'Costume',category:'Materials',amount:'25.00',allocation:'A'};
     const expense=await m.call('test/expenses',expenseInput,a);assert.equal(expense.status,201);
     assert.equal((await m.call('test/reset',{confirm:'RESET'},a)).status,200);
+    assert.equal(m.sheetRows.get(record.sheet_row)[16],'Reset');
     state=await (await m.call('test/state',undefined,a)).json();assert.equal(state.records.length,0);
     assert.equal(m.tables.test_transactions.length,3);assert.equal((await (await m.call('test/state',undefined,b)).json()).records.length,1);
     assert.equal((await m.call('test/expenses',expenseInput,a)).status,201);
+  }finally{m.restore();}
+});
+
+test('test sheet failure, retry, stable row, and cross-session denial',async()=>{
+  const m=mockSandbox();try{
+    const a=await m.start(),b=await m.start();
+    await m.call('test/link/request',{employeeId:'richard',chatId:'33333333'},a);
+    const challenge=m.sent.at(-1).reply_markup.inline_keyboard[0][0].callback_data.split(':')[1];
+    await m.confirm(challenge,33333333);
+    m.failSheet();
+    const created=await m.call('test/sales',{employeeId:'richard',reference:'STSYNC',customer:'Sample',project:'A',description:'Guests',amount:'100.00',split:{r:50,a:30,j:20}},a);
+    assert.equal(created.status,201);
+    const record=(await created.json()).record;
+    assert.equal((await (await m.call('test/state',undefined,a)).json()).records[0].sheet_sync_status,'Failed');
+    assert.equal(m.sheetRows.has(record.sheet_row),false);
+    assert.equal((await m.call('test/retry-sheet',{transactionId:record.id},b)).status,404);
+    assert.equal((await m.call('test/retry-sheet',{transactionId:record.id},a)).status,200);
+    assert.equal(m.sheetRows.get(record.sheet_row)[0],record.id);
+    await m.call('test/decide',{reference:'STSYNC',split:{r:40,a:30,j:30}},a);
+    assert.equal(m.sheetRows.size,1);
+    assert.deepEqual(m.sheetRows.get(record.sheet_row).slice(7,13),[50,30,20,40,30,30]);
+    assert.equal((await m.call('test/retry-sheet',{transactionId:record.id},a)).status,200);
+    assert.equal(m.sheetRows.size,1);
   }finally{m.restore();}
 });
 

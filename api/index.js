@@ -2,7 +2,7 @@ import {InputError} from '../lib/rules.js';
 import {db,rpc,telegram} from '../lib/integrations.js';
 import {submitSale,submitExpense,approveSale,allocateExpense,snapshot,syncRecord,deliver} from '../lib/service.js';
 import {requestOtp,verifyOtp,refresh,identity,sessionCookies,clearCookies,randomLinkCode,hashCode} from '../lib/auth.js';
-import {testSession,testState,requestTestLink,testLinkStatus,confirmTestLinkButton,submitTest,decideTest,retryTest,resetTest,unlinkTest,testBotLink} from '../lib/test-sandbox.js';
+import {testSession,testState,requestTestLink,testLinkStatus,confirmTestLinkButton,submitTest,decideTest,retryTest,retryTestSheet,resetTest,unlinkTest,testBotLink} from '../lib/test-sandbox.js';
 
 const saleUsage='To record a sale, send one message in this format:\n/sale S06 | Customer name | A | Description | 1000.00 | 50/30/20\nUse A or B for the project. The last numbers are Richard/Anastasia/Jean-Claude percentages and must total 100.';
 const expenseUsage='To record an expense, send one message in this format:\n/expense E08 | Description | Materials | 120.00 | A\nCategory: Materials, Travel, or Other. Allocation: A, B, or Company overhead.';
@@ -92,6 +92,7 @@ export async function handle(request){
       if(path==='/test/expenses')return json(await submitTest(session.id,'expense',body,String(body.employeeId||'')),201);
       if(path==='/test/decide')return json(await decideTest(session.id,body));
       if(path==='/test/retry')return json(await retryTest(session.id,body.eventId));
+      if(path==='/test/retry-sheet')return json(await retryTestSheet(session.id,body.transactionId));
       if(path==='/test/reset')return json(await resetTest(session.id,body));
       return json({error:'Not found'},404);
     }
