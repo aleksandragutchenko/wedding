@@ -73,7 +73,7 @@ create table if not exists delivery_events (
   event_type text not null check (event_type in ('submission','decision')),
   chat_id bigint,
   message text not null,
-  status text not null check (status in ('Delivery pending','Delivered','Delivery failed','No Telegram recipient linked')),
+  status text not null check (status in ('Delivery pending','Delivery sending','Delivered','Delivery failed','No Telegram recipient linked')),
   error text,
   attempts integer not null default 0,
   updated_at timestamptz not null default now(),
@@ -90,3 +90,4 @@ alter table delivery_events enable row level security;
 grant select on employees to service_role;
 grant select, insert, update on telegram_links, sales, expenses, delivery_events to service_role;
 grant usage, select on sequence sales_sheet_row_seq, expenses_sheet_row_seq, delivery_events_id_seq to service_role;
+
