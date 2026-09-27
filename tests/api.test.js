@@ -63,4 +63,25 @@ test('bare Telegram sale and expense commands return their formats',async()=>{
   if(originalSecret===undefined)delete process.env.TELEGRAM_WEBHOOK_SECRET;else process.env.TELEGRAM_WEBHOOK_SECRET=originalSecret;
  }
 });
+test('Telegram rejects an unlinked user or a linked user in a different chat',async()=>{
+ const oldFetch=globalThis.fetch;
+ const names=['TELEGRAM_BOT_TOKEN','TELEGRAM_WEBHOOK_SECRET','SUPABASE_URL','SUPABASE_SECRET_KEY'];
+ const saved=Object.fromEntries(names.map(k=>[k,process.env[k]]));
+ Object.assign(process.env,{TELEGRAM_BOT_TOKEN:'test-token',TELEGRAM_WEBHOOK_SECRET:'test-secret',SUPABASE_URL:'https://db.example',SUPABASE_SECRET_KEY:'test'});
+ const messages=[];let links=[];
+ globalThis.fetch=async(url,options={})=>{
+  if(String(url).includes('/telegram_links'))return Response.json(links);
+  if(String(url).includes('/sendMessage')){messages.push(JSON.parse(options.body));return Response.json({ok:true,result:{}});}
+  throw Error(`Unexpected request ${url}`);
+ };
+ try{
+  const update={message:{from:{id:123},chat:{id:123,type:'private'},text:'/expense E09 | Test | Materials | 1.00 | A'}};
+  const request=()=>new Request('http://localhost/api/telegram',{method:'POST',headers:{'Content-Type':'application/json','x-telegram-bot-api-secret-token':'test-secret'},body:JSON.stringify(update)});
+  assert.equal((await handle(request())).status,200);
+  assert.match(messages.at(-1).text,/not linked together/);
+  links=[{telegram_user_id:123,chat_id:999,employee_id:'kevin'}];
+  assert.equal((await handle(request())).status,200);
+  assert.match(messages.at(-1).text,/not linked together/);
+ }finally{globalThis.fetch=oldFetch;for(const k of names){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}}
+});
 
