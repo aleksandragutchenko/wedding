@@ -14,4 +14,3 @@ test('pending sale excluded and awaiting expense reduces company but not project
  const result=dashboard([{status:'Pending approval',project:'A',amount_cents:100000}], [{status:'Awaiting allocation',amount_cents:14000}]);
  assert.equal(result.income,0);assert.equal(result.awaiting,14000);assert.equal(result.companyResult,-14000);assert.equal(result.projects.A.result,0);
 });
-

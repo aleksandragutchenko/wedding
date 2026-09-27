@@ -65,6 +65,14 @@ test('concurrent Telegram delivery retries claim one send',async()=>{
  finally{globalThis.fetch=oldFetch;for(const k of names){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}}
 });
 
+test('a stale sending lease can be retried after a worker interruption',async()=>{
+ const oldFetch=globalThis.fetch,oldUrl=process.env.SUPABASE_URL,oldKey=process.env.SUPABASE_SECRET_KEY,oldToken=process.env.TELEGRAM_BOT_TOKEN;
+ Object.assign(process.env,{SUPABASE_URL:'https://db.example',SUPABASE_SECRET_KEY:'test',TELEGRAM_BOT_TOKEN:'test-token'});
+ const event={id:5,status:'Delivery sending',chat_id:123,message:'Approval',attempts:1,updated_at:new Date(Date.now()-10*60*1000).toISOString()};let sends=0;
+ globalThis.fetch=async(url,options={})=>{const target=String(url);if(target.includes('/delivery_events')){if(options.method==='PATCH'){Object.assign(event,JSON.parse(options.body));return Response.json([event]);}return Response.json([event]);}if(target.includes('/sendMessage')){sends++;return Response.json({ok:true,result:{message_id:1}});}throw Error(target);};
+ try{const result=await deliver(5);assert.equal(result.status,'Delivered');assert.equal(sends,1);assert.equal(result.attempts,2);}finally{globalThis.fetch=oldFetch;for(const [k,v] of Object.entries({SUPABASE_URL:oldUrl,SUPABASE_SECRET_KEY:oldKey,TELEGRAM_BOT_TOKEN:oldToken})){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
+});
+
 test('stale concurrent approval loses conditional database update',async()=>{
  const oldFetch=globalThis.fetch,oldUrl=process.env.SUPABASE_URL,oldKey=process.env.SUPABASE_SECRET_KEY;
  process.env.SUPABASE_URL='https://db.example';process.env.SUPABASE_SECRET_KEY='test';
@@ -77,3 +85,10 @@ test('stale concurrent approval loses conditional database update',async()=>{
  finally{globalThis.fetch=oldFetch;if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SECRET_KEY;else process.env.SUPABASE_SECRET_KEY=oldKey;}
 });
 
+test('a decision keeps the sale original chat after that Telegram account is reassigned',async()=>{
+ const oldFetch=globalThis.fetch,oldUrl=process.env.SUPABASE_URL,oldKey=process.env.SUPABASE_SECRET_KEY,oldToken=process.env.TELEGRAM_BOT_TOKEN;
+ Object.assign(process.env,{SUPABASE_URL:'https://db.example',SUPABASE_SECRET_KEY:'test',TELEGRAM_BOT_TOKEN:'test-token'});
+ const sale={reference:'S01',salesperson_id:'richard',notification_chat_id:123,origin_chat_id:123,status:'Pending approval',project:'A',amount_cents:100000,proposed_r:50,proposed_a:30,proposed_j:20,sheet_row:2};let event=null,recipient=null;
+ globalThis.fetch=async(url,options={})=>{const target=String(url);if(target.includes('/telegram_links'))throw Error('Decision must not look up a current Telegram link');if(target.includes('/sales')){if(options.method==='PATCH')Object.assign(sale,JSON.parse(options.body));return Response.json([sale]);}if(target.includes('/delivery_events')){if(options.method==='POST'){event={...JSON.parse(options.body),id:1,attempts:0};return Response.json([event]);}if(options.method==='PATCH'){Object.assign(event,JSON.parse(options.body));return Response.json([event]);}return Response.json([event]);}if(target.includes('/sendMessage')){recipient=JSON.parse(options.body).chat_id;return Response.json({ok:true,result:{message_id:1}});}throw Error(target);};
+ try{const result=await approveSale('S01',{r:50,a:30,j:20},'svetlana');assert.equal(result.status,'Approved');assert.equal(event.chat_id,123);assert.equal(recipient,123);}finally{globalThis.fetch=oldFetch;for(const [k,v] of Object.entries({SUPABASE_URL:oldUrl,SUPABASE_SECRET_KEY:oldKey,TELEGRAM_BOT_TOKEN:oldToken})){if(v===undefined)delete process.env[k];else process.env[k]=v;}}
+});

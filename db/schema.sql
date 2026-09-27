@@ -90,4 +90,3 @@ alter table delivery_events enable row level security;
 grant select on employees to service_role;
 grant select, insert, update on telegram_links, sales, expenses, delivery_events to service_role;
 grant usage, select on sequence sales_sheet_row_seq, expenses_sheet_row_seq, delivery_events_id_seq to service_role;
-

@@ -9,4 +9,3 @@ test('Supabase read retries one transient future-JWT response',async()=>{
  try{assert.deepEqual(await db('sales'),[{reference:'S01'}]);assert.equal(calls,2);}
  finally{globalThis.fetch=oldFetch;if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SECRET_KEY;else process.env.SUPABASE_SECRET_KEY=oldKey;}
 });
-
