@@ -1,6 +1,7 @@
 import {InputError} from '../lib/rules.js';
 import {db,telegram} from '../lib/integrations.js';
 import {submitSale,submitExpense,approveSale,allocateExpense,snapshot,linkTelegram,syncRecord,deliver} from '../lib/service.js';
+import {loginResponse,logoutResponse,managerSignedIn,requireManager} from '../lib/manager-auth.js';
 
 const saleUsage='To record a sale, send one message in this format:\n/sale S06 | Customer name | A | Description | 1000.00 | 50/30/20\nUse A or B for the project. The last numbers are Richard/Anastasia/Jean-Claude percentages and must total 100.';
 const expenseUsage='To record an expense, send one message in this format:\n/expense E08 | Description | Materials | 120.00 | A\nCategory: Materials, Travel, or Other. Allocation: A, B, or Company overhead.';
@@ -22,14 +23,15 @@ async function bot(update){
   const message=update?.message;if(!message?.from?.id||!message?.chat?.id)return;
   const chatId=message.chat.id,userId=message.from.id,text=String(message.text||'').trim();
   if(message.chat.type!=='private'){await telegram('sendMessage',{chat_id:chatId,text:'Use this bot in a private chat.'});return;}
-  if(/^\/(start|help)(?:@\w+)?$/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:`Friends Included\n/id — show your Telegram IDs for manager linking\n\n${saleUsage}\n\n${expenseUsage}\n\nThe manager must link your ID before submissions.`});return;}
+  if(/^\/(start|help)(?:@\w+)?(?:\s+\S+)?$/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:`Friends Included\n/id — show your Telegram IDs for manager linking\n\n${saleUsage}\n\n${expenseUsage}\n\nThe manager must link your ID before submissions.`});return;}
   if(/^\/id\b/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:`Telegram user ID: ${userId}\nChat ID: ${chatId}`});return;}
+  if(/^\/cancel(?:@\w+)?$/i.test(text)){await telegram('sendMessage',{chat_id:chatId,text:'There is no unfinished entry to cancel. Send a complete /sale or /expense message when ready.'});return;}
   const match=text.match(/^\/(sale|expense)(?:@\w+)?(?:\s+([\s\S]+))?$/i);
   if(!match){await telegram('sendMessage',{chat_id:chatId,text:'Unknown command. Send /help for formats.'});return;}
   if(!match[2]?.trim()){await telegram('sendMessage',{chat_id:chatId,text:match[1].toLowerCase()==='sale'?saleUsage:expenseUsage});return;}
   try{
     const links=await db('telegram_links',{query:`telegram_user_id=eq.${userId}&limit=1`}),actor=links[0]?.employee_id;
-    if(!actor)throw new InputError('Your Telegram user ID is not linked. Send /id and ask the manager to link it.',403);
+    if(!actor||String(links[0].chat_id)!==String(chatId))throw new InputError('This Telegram user and private chat are not linked together. Send /id and ask the manager to link both IDs.',403);
     const parts=match[2].split('|').map(s=>s.trim());
     if(match[1].toLowerCase()==='sale')await submitSale(parseBotSale(parts),actor,'telegram',chatId);
     else await submitExpense(parseBotExpense(parts),actor,'telegram',chatId);
@@ -43,9 +45,21 @@ export async function handle(request){
       if(!process.env.TELEGRAM_WEBHOOK_SECRET||request.headers.get('x-telegram-bot-api-secret-token')!==process.env.TELEGRAM_WEBHOOK_SECRET)return json({error:'Unauthorized webhook'},401);
       await bot(await request.json());return json({ok:true});
     }
-    if(request.method==='GET'&&path==='/state')return json(await snapshot(role(null,request)));
+    if(request.method==='GET'&&path==='/manager-session')return json({authenticated:managerSignedIn(request)});
+    if(request.method==='GET'&&path==='/state'){
+      const actor=role(null,request);
+      if(actor==='svetlana')requireManager(request);
+      return json(await snapshot(actor));
+    }
     if(request.method!=='POST')return json({error:'Not found'},404);
     const body=await request.json(),actor=role(body,request);
+    if(path==='/manager-login')return loginResponse(request,body.code);
+    if(path==='/manager-logout')return logoutResponse(request);
+    if(['/connect-telegram','/approve-sale','/allocate-expense','/link-telegram','/retry-sheet','/retry-delivery'].includes(path)){
+      if(actor!=='svetlana')throw new InputError('Only Svetlana may perform manager actions.',403);
+      if(request.headers.get('origin')&&request.headers.get('origin')!==url.origin)throw new InputError('Cross-site manager request refused.',403);
+      requireManager(request);
+    }
     if(path==='/connect-telegram'){
       if(actor!=='svetlana')throw new InputError('Only Svetlana may connect the Telegram bot.',403);
       if(!process.env.TELEGRAM_WEBHOOK_SECRET)throw new Error('TELEGRAM_WEBHOOK_SECRET is not configured');
