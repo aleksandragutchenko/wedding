@@ -1,8 +1,8 @@
-# Professor test access — review before rollout
+# Professor test access
 
-**Status: local implementation only.** The live website, Supabase schema, Vercel configuration, Telegram webhook, and sharing settings have not been changed by this work. The live website still runs the previous public role-selector version until a separate deployment is approved.
+**Status: deployed.** The professor test is available at `https://friends-included.vercel.app/test.html`. The sandbox tables are installed in Supabase, and the bot accepts Telegram confirmation buttons. The homework Sheet sharing has not been changed.
 
-## What a professor will do after rollout
+## What a professor does
 
 1. Open the submitted website and select **Test this system**. The page starts a private seven-day browser workspace. No login or manager code is needed.
 2. Open `@weddiing_hire_task_bot` in Telegram, press **Start**, and send `/id`.
@@ -23,15 +23,8 @@ The test mode does not write to the homework Google Sheet. The website audit vie
 - Test records never enter `sales`, `expenses`, `delivery_events`, or the Google Sheet. Reset sets `reset_at` on the current session's records, retaining them for recovery by an administrator while removing them from active totals. The same reference can be reused after reset.
 - Telegram Bot API does not provide an exactly-once delivery transaction across the database and Telegram. A retry after a worker timed out following a successful send could duplicate one chat message; the UI marks this condition before retry. Record creation and decisions remain single-use.
 
-## Deployment changes requiring owner approval
+## Verified production journey
 
-The unpublished local branch also contains the earlier real-account access correction. Deploying this working tree as a whole requires these exact steps, in order:
+On 27 September 2026, a browser session linked a private Telegram chat using the confirmation button, submitted fictional sale ST2719 through the bot, approved it in the test manager view with a changed 40/30/30 split, received the decision in the same chat, and still showed the approved record and delivered status after refresh. Repeating the same bot command did not create a second record. A separate browser origin showed no records from the first session. The two disposable records created during this check were reset; S01–S05 and E01–E07 remained present. The automated suite passed 20 tests, including expired challenges, unauthorized requests, duplicate events, and delivery failure and retry.
 
-1. Preserve a recoverable Supabase backup or export of `sales`, `expenses`, `delivery_events`, `telegram_links`, and relevant access tables. Confirm S01–S05 and E01–E07 are present and unchanged.
-2. Apply `db/2026-09-27-access.sql` to the Friends Included Supabase project. This enforces real-user authorization and replaces the live public role selector. Complete the five-account setup described in `ACCESS_GUIDE.md` if real employees will use the private finance desk.
-3. Apply `db/2026-09-27-test-sandbox.sql`. This creates only new `test_*` tables and its chat-claim function; it does not edit homework transaction rows or Sheet sharing.
-4. Confirm the existing server-only `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_WEBHOOK_SECRET` Vercel variables remain configured. The previous account-access implementation also needs its documented Supabase Auth configuration. The sandbox needs **no new secret or manager code**.
-5. Deploy the reviewed code to Vercel. The existing Telegram webhook URL remains `/api/telegram`; the website enables Telegram `callback_query` updates when it sends a confirmation button. No separate bot or webhook is required. No Google Sheet or Supabase dashboard sharing change is required.
-6. After deployment, run one real professor-style test using a Telegram private chat, then verify two independent browser sessions cannot see or decide each other's records. Leave the original homework rows untouched.
-
-No migration, deployment, webhook change, sharing change, or live transaction is authorized by this guide itself.
+Staff account invitations and assignments remain an owner task described in `ACCESS_GUIDE.md`; they are not needed for this professor test. Google Sheet sharing and credential rotation were not changed.

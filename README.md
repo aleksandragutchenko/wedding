@@ -1,6 +1,6 @@
 # Friends Included finance desk
 
-The deployed site is currently on the **old** public role-selector version. This directory contains the proposed account-based implementation and a self-service professor test workspace. Do not deploy it or change sharing until the owner approves the rollout in `ACCESS_GUIDE.md` and `TEST_ACCESS_GUIDE.md`.
+The deployed site has a public, isolated professor test workspace at `https://friends-included.vercel.app/test.html`. The original homework ledger is preserved. Private staff sign-in is deployed but still requires the owner to invite and assign the five real accounts. See `ACCESS_GUIDE.md` for those separate setup steps.
 
 ## Architecture
 
