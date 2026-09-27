@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync} from 'node:crypto';
-import {syncRecord,submitSale} from '../lib/service.js';
+import {syncRecord,submitSale,deliver} from '../lib/service.js';
 
 test('sheet retry finds existing reference after row movement and updates it once',async()=>{
  const originalFetch=globalThis.fetch;
@@ -39,5 +39,27 @@ test('identical Telegram retry returns existing sale without new side effects',a
  globalThis.fetch=async(_url,options={})=>{calls++;return options.method==='POST'?Response.json({message:'duplicate key value violates unique constraint'},{status:409}):Response.json([existing]);};
  try{const result=await submitSale({reference:'S09',customer:'C',project:'A',description:'D',amount:'100',split:{r:50,a:30,j:20}},'richard','telegram',123);assert.deepEqual(result,existing);assert.equal(calls,2);}
  finally{globalThis.fetch=originalFetch;if(oldUrl===undefined)delete process.env.SUPABASE_URL;else process.env.SUPABASE_URL=oldUrl;if(oldKey===undefined)delete process.env.SUPABASE_SECRET_KEY;else process.env.SUPABASE_SECRET_KEY=oldKey;}
+});
+
+test('concurrent Telegram delivery retries claim one send',async()=>{
+ const oldFetch=globalThis.fetch;
+ const names=['SUPABASE_URL','SUPABASE_SECRET_KEY','TELEGRAM_BOT_TOKEN'];
+ const saved=Object.fromEntries(names.map(k=>[k,process.env[k]]));
+ Object.assign(process.env,{SUPABASE_URL:'https://db.example',SUPABASE_SECRET_KEY:'test',TELEGRAM_BOT_TOKEN:'test-token'});
+ const event={id:1,status:'Delivery failed',chat_id:123,message:'Test notice',attempts:0};let sends=0;
+ globalThis.fetch=async(url,options={})=>{
+  const target=String(url);
+  if(target.includes('/delivery_events')){
+   if(options.method==='PATCH'){
+    if(target.includes('status=in.')&&event.status!=='Delivery failed')return Response.json([]);
+    Object.assign(event,JSON.parse(options.body));return Response.json([event]);
+   }
+   return Response.json([event]);
+  }
+  if(target.includes('/sendMessage')){sends++;return Response.json({ok:true,result:{message_id:1}});}
+  throw Error(`Unexpected request ${target}`);
+ };
+ try{await Promise.all([deliver(1),deliver(1)]);assert.equal(sends,1);assert.equal(event.status,'Delivered');}
+ finally{globalThis.fetch=oldFetch;for(const k of names){if(saved[k]===undefined)delete process.env[k];else process.env[k]=saved[k];}}
 });
 
